@@ -1,0 +1,75 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<mule xmlns:json="http://www.mulesoft.org/schema/mule/json"
+	xmlns:http="http://www.mulesoft.org/schema/mule/http" xmlns:tracking="http://www.mulesoft.org/schema/mule/ee/tracking"
+	xmlns="http://www.mulesoft.org/schema/mule/core" xmlns:doc="http://www.mulesoft.org/schema/mule/documentation"
+	xmlns:spring="http://www.springframework.org/schema/beans" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+	xsi:schemaLocation="http://www.springframework.org/schema/beans http://www.springframework.org/schema/beans/spring-beans-current.xsd
+http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd
+http://www.mulesoft.org/schema/mule/http http://www.mulesoft.org/schema/mule/http/current/mule-http.xsd
+http://www.mulesoft.org/schema/mule/ee/tracking http://www.mulesoft.org/schema/mule/ee/tracking/current/mule-tracking-ee.xsd
+http://www.mulesoft.org/schema/mule/json http://www.mulesoft.org/schema/mule/json/current/mule-json.xsd">
+	<http:listener-config name="HTTP_Listener_Configuration"
+		host="localhost" port="${http.path}" basePath="/api"
+		doc:name="HTTP Listener Configuration" />
+	<spring:beans>
+		<spring:bean id="paymentsDataStore" name="paymentsDataStore"
+			class="java.util.HashMap" scope="singleton" />
+		<spring:bean id="paymentID" name="paymentID"
+			class="java.util.concurrent.atomic.AtomicInteger" scope="singleton" />
+	</spring:beans>
+	<flow name="Retrive-All-PaymentsFlow">
+		<http:listener config-ref="HTTP_Listener_Configuration"
+			path="/payments" allowedMethods="GET, POST, PUT, DELETE" doc:name="HTTP" />
+        <logger message="#[message]" level="INFO" doc:name="Logger"/>
+		<set-variable variableName="method"
+			value="#[message.inboundProperties['http.method']]" doc:name="Variable" />
+        <logger message="#[message]" level="INFO" doc:name="Logger"/>
+		<choice doc:name="Select Method">
+			<when expression="#[flowVars['method'] == 'POST']">
+				<flow-ref name="StorePayments" doc:name="StorePayments Flow Reference" />
+			</when>
+			<when expression="#[flowVars['method'] == 'PUT']">
+				<flow-ref name="UpdatePayments" doc:name="UpdatePayments Flow Reference" />
+			</when>
+			<otherwise>
+				<flow-ref name="GetPayments" doc:name="GetPayments Flow Reference" />
+			</otherwise>
+		</choice>
+	</flow>
+	<sub-flow name="StorePayments">
+		<logger message="Entering into Store Payments flow" level="INFO"
+			doc:name="Logger" />
+		<json:json-to-object-transformer
+			returnClass="com.eai.integration.Payments" doc:name="JSON to Object" />
+		<set-variable variableName="paymentID"
+			value="#[app.registry.'paymentID'.incrementAndGet()]" doc:name="paymentID" />
+		<expression-component doc:name="Expression"><![CDATA[payload.paymentID = paymentID;
+app.registry.'paymentsDataStore'.put(paymentID, payload);]]></expression-component>
+		<set-payload
+			value="{ &quot;status&quot;: &quot;success&quot;, &quot;statusDescription&quot;: &quot;Payments created successfully&quot;}"
+			doc:name="Set Payload" />
+
+	</sub-flow>
+	<sub-flow name="GetPayments" >
+	<logger message="Entering into GET Payments flow" level="INFO"
+					doc:name="Logger" />
+				<set-payload value="#[app.registry.'paymentsDataStore'.values()]"
+					doc:name="Set Payload" />
+				<logger message="#[payload]" level="INFO" doc:name="Logger" />
+				<json:object-to-json-transformer
+					doc:name="Object to JSON" />
+	</sub-flow>
+	<sub-flow name="UpdatePayments">
+		<logger message="Entering into Update Payments flow" level="INFO"
+			doc:name="Logger" />
+		<json:json-to-object-transformer
+			returnClass="com.eai.integration.Payments" doc:name="JSON to Object" />
+		<expression-component doc:name="Expression"><![CDATA[flowVars.paymentID = message.inboundProperties['http.query.params'].paymentID
+app.registry.'paymentsDataStore'.put(paymentID, payload);]]></expression-component>
+		<set-payload
+			value="{ &quot;status&quot;: &quot;success&quot;, &quot;statusDescription&quot;: &quot;Payments updated successfully&quot;}"
+			doc:name="Set Payload" />
+
+	</sub-flow>
+</mule>
